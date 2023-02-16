@@ -4,7 +4,7 @@
 node_modules/
 *.tmp
 *.mp4
-dash_ready/*
 queue/*
 streaming/*
-pending/*
+*.txt
+*.chunk
