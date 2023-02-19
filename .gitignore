@@ -8,3 +8,6 @@ queue/*
 streaming/*
 *.txt
 *.chunk
+*/dist/*.js
+*/blob/
+*/manifest/
