@@ -79,7 +79,7 @@ function readStringFromFile(file) {
     return new Promise((resolve, reject) => {
         fs.open(file, 'r', (err, fd) => {
             if (err) return reject(err)
-            fs.read(fd, (err, data) => {
+            fs.readFile(fd, (err, data) => {
                 if (err) return reject(err)
                 fs.close(fd, (err) => {
                     if (err) return reject(err)
@@ -123,11 +123,27 @@ function createDirectory(dir) {
     })
 }
 
+/**
+ * This function read all files in a directory
+ * 
+ * @param {String} dir directory to read
+ * @returns {Promise} resolve with an array of files in the directory, reject if it fails
+ */
+function readDirectory(dir) {
+    return new Promise((resolve, reject) => {
+        fs.readdir(dir, (err, files) => {
+            if (err) return reject(err)
+            return resolve(files)
+        })
+    })
+}
+
 module.exports = {
     writeToFile,
     writeToFileAt,
     writeStringToFile,
     readStringFromFile,
     createEmptyFile,
-    createDirectory
+    createDirectory,
+    readDirectory
 }

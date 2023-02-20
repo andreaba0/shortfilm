@@ -6,7 +6,14 @@ const xmlParser = require('xml2js').parseString
 const { v4: uuidv4 } = require('uuid')
 const bodyParser = require('body-parser')
 const childProcess = require('child_process')
-const { createEmptyFile, createDirectory, writeToFileAt, writeStringToFile } = require('./utility')
+const { 
+    createEmptyFile, 
+    createDirectory, 
+    writeToFileAt, 
+    writeStringToFile, 
+    readDirectory,
+    readStringFromFile 
+} = require('./utility')
 const v8 = require('v8')
 const crypto = require('crypto')
 
@@ -180,6 +187,12 @@ async function init() {
     try {
         await createDirectory(path.join(__dirname, 'blob'))
         await createDirectory(path.join(__dirname, 'manifest'))
+        const files = await readDirectory(path.join(__dirname, 'manifest'))
+        for (const file of files) {
+            const content = await readStringFromFile(path.join(__dirname, `manifest/${file}`))
+            const videoId = file.split('.')[0]
+            blobDatabase[videoId] = JSON.parse(content)
+        }
     } catch (e) {
         console.log(e)
         console.error('Error while creating directories')
