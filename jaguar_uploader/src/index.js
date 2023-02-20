@@ -47,7 +47,10 @@ import CryptoJs from 'crypto-js';
                     if (end > fileSize) end = fileSize
                     promises.push(
                         new Promise(async (resolve, reject) => {
-                            const hash = CryptoJs.SHA256(CryptoJs.lib.WordArray.create(reader.result.slice(start, end))).toString(CryptoJs.enc.Hex)
+                            const chunkStart = start
+                            const chunkEnd = end
+                            const chunk = new Uint8Array(reader.result.slice(chunkStart, chunkEnd))
+                            const hash = CryptoJs.SHA256(CryptoJs.lib.WordArray.create(reader.result.slice(chunkStart, chunkEnd))).toString(CryptoJs.enc.Hex)
                             async function upload() {
                                 return new Promise(async (resolve, reject) => {
                                     try {
@@ -55,10 +58,10 @@ import CryptoJs from 'crypto-js';
                                             method: 'POST',
                                             headers: {
                                                 'Content-Type': 'application/octet-stream',
-                                                'Content-Range': `bytes ${start}-${end - 1}/${fileSize}`,
+                                                'Content-Range': `bytes ${chunkSize}-${chunkEnd - 1}/${fileSize}`,
                                                 'Content-Hash': hash
                                             },
-                                            body: reader.result.slice(start, end)
+                                            body: chunk
                                         })
                                         if (isFetchOk(response.status)) return resolve()
                                         reject()
