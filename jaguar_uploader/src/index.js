@@ -49,6 +49,7 @@ import CryptoJs from 'crypto-js';
                         new Promise(async (resolve, reject) => {
                             const chunkStart = start
                             const chunkEnd = end
+                            console.log(chunkStart, chunkEnd)
                             const chunk = new Uint8Array(reader.result.slice(chunkStart, chunkEnd))
                             const hash = CryptoJs.SHA256(CryptoJs.lib.WordArray.create(reader.result.slice(chunkStart, chunkEnd))).toString(CryptoJs.enc.Hex)
                             async function upload() {
@@ -58,7 +59,7 @@ import CryptoJs from 'crypto-js';
                                             method: 'POST',
                                             headers: {
                                                 'Content-Type': 'application/octet-stream',
-                                                'Content-Range': `bytes ${chunkSize}-${chunkEnd - 1}/${fileSize}`,
+                                                'Content-Range': `bytes ${chunkStart}-${chunkEnd - 1}/${fileSize}`,
                                                 'Content-Hash': hash
                                             },
                                             body: chunk
