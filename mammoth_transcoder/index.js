@@ -6,7 +6,7 @@ const xmlParser = require('xml2js').parseString
 const { v4: uuidv4 } = require('uuid')
 const bodyParser = require('body-parser')
 const childProcess = require('child_process')
-const {getClient: getRedisClient} = require('./lib/redis')
+const { getClient: getRedisClient } = require('./lib/redis')
 const {
     createEmptyFile,
     createDirectory,
@@ -21,32 +21,34 @@ const crypto = require('crypto')
 
 var concurrentActiveProcesses = 0
 
+async function deleteBlobData(blobName) {
+    try {
+        await deleteFile(path.join(__dirname, `blob/${blobName}.${blobDatabase[blobName].file.container}`))
+
+    } catch (e) {
+        if (e.code !== 'ENOENT')
+            console.error(`Failed to delete blob ${blobName}: ${e.message}`)
+    }
+    try {
+        await deleteFile(path.join(__dirname, `manifest/${blobName}.json`))
+    } catch (e) {
+        if (e.code !== 'ENOENT')
+            console.error(`Failed to delete manifest ${blobName}: ${e.message}`)
+    }
+}
+
 setInterval(async () => {
-    /*const headStatistics = v8.getHeapStatistics()
-    const heapUsed = headStatistics.used_heap_size
-    const heapLimit = headStatistics.heap_size_limit
-    console.log(`used: ${parseInt(heapUsed/(1024*1024))}MB, limit: ${parseInt(heapLimit/(1024*1024))}MB, ratio: ${(heapUsed/heapLimit)*100}%`)*/
     for (var key in expireBlobs) {
         if (expireBlobs[key] > Date.now()) continue
-        try {
-            await deleteFile(path.join(__dirname, `blob/${key}.${blobDatabase[key].file.container}`))
 
-        } catch (e) {
-            if (e.code !== 'ENOENT')
-                console.error(`Failed to delete blob ${key}: ${e.message}`)
-        }
-        try {
-            await deleteFile(path.join(__dirname, `manifest/${key}.json`))
-        } catch (e) {
-            console.error(`Failed to delete manifest ${key}: ${e.message}`)
-        }
+        await deleteBlobData(key)
         delete blobDatabase[key]
         delete expireBlobs[key]
     }
-    for(var key in blobDatabase) {
-        if(blobDatabase[key].file.status!=='uploaded') continue
+    for (var key in blobDatabase) {
+        if (blobDatabase[key].file.status !== 'uploaded') continue
         delete expireBlobs[key]
-        if(concurrentActiveProcesses>4) continue
+        if (concurrentActiveProcesses > 4) continue
         concurrentActiveProcesses++
         await getRedisClient().publish('any', JSON.stringify({
             type: 'validate',
@@ -58,7 +60,6 @@ setInterval(async () => {
 }, 5000)
 
 function validateVideo(videoId) {
-    //execute ffprobe to get video metadata
     const ffprobe = childProcess.spawn('ffprobe', [
         '-v', 'quiet',
         '-print_format', 'json',
@@ -67,26 +68,64 @@ function validateVideo(videoId) {
     ])
     var ffprobeOutput = ''
     ffprobe.stdout.on('data', (data) => {
+        console.log(process.memoryUsage())
         ffprobeOutput += data
+        const headStatistics = v8.getHeapStatistics()
+        const heapUsed = headStatistics.used_heap_size
+        const heapLimit = headStatistics.heap_size_limit
+        console.log(`used: ${parseInt(heapUsed / (1024 * 1024))}MB, limit: ${parseInt(heapLimit / (1024 * 1024))}MB, ratio: ${(heapUsed / heapLimit) * 100}%`)
     }
     )
-    ffprobe.on('close', (code) => {
+    ffprobe.on('close', async (code) => {
         concurrentActiveProcesses--
         if (code !== 0) {
             console.error(`Failed to execute ffprobe: ${code}`)
+            await deleteBlobData(videoId)
+            await getRedisClient().publish('any', JSON.stringify({
+                type: 'error',
+                id: videoId,
+                message: 'Invalid video file'
+            }));
+            delete blobDatabase[videoId]
             return
         }
         try {
+            var codecVideo = 0
+            var codecAudio = 0
             const videoMetadata = JSON.parse(ffprobeOutput)
-            if (!videoMetadata.format || !videoMetadata.format.duration) {
-                console.error(`Failed to get video duration`)
+            for (var i = 0; i < videoMetadata.streams.length; i++) {
+                if (videoMetadata.streams[i].codec_type === 'video') codecVideo++
+                if (videoMetadata.streams[i].codec_type === 'audio') codecAudio++
+            }
+            if (codecVideo === 1 && codecAudio > 0) {
+                blobDatabase[videoId].file.status = 'validated'
+                await writeStringToFile(JSON.stringify(blobDatabase[videoId]), path.join(__dirname, `manifest/${videoId}.json`))
+                await getRedisClient().publish('any', JSON.stringify({
+                    type: 'validate',
+                    id: videoId,
+                    progress: 100
+                }));
                 return
             }
-            blobDatabase[videoId].file.duration = videoMetadata.format.duration
-            blobDatabase[videoId].file.status = 'valid'
-            console.log(`Video ${videoId} is valid`)
+            await deleteBlobData(videoId)
+            await getRedisClient().publish('any', JSON.stringify({
+                type: 'error',
+                id: videoId,
+                message: {
+                    video: {
+                        found: codecVideo,
+                        expected: '=1'
+                    },
+                    audio: {
+                        found: codecAudio,
+                        expected: '>0'
+                    }
+                }
+            }));
+            delete blobDatabase[videoId]
         } catch (e) {
             console.error(`Failed to parse ffprobe output: ${e.message}`)
+            console.error(e)
         }
     })
 }
@@ -100,19 +139,6 @@ app.use(bodyParser.raw({ limit: '10mb', type: 'application/octet-stream' }))
 var blobDatabase = {}
 var expireBlobs = {}
 
-/**
- * Middleware for allowing reqeust from any origin
- */
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*')
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Content-Range, Content-Disposition, Content-Description, Content-Hash')
-    next()
-})
-
-/**
- * This endpoint is used to initialize the uploading schema
- * The request body is a json string containing the video metadata
- */
 app.post('/upload/begin/:video_id', async (req, res) => {
     const videoId = req.params.video_id
     if (!req.is('application/json')) {
