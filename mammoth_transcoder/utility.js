@@ -138,6 +138,21 @@ function readDirectory(dir) {
     })
 }
 
+/**
+ * This function delete a file
+ * 
+ * @param {String} file file to delete
+ * @returns {Promise} resolve if file has been deleted successfully, reject if it fails
+ */
+function deleteFile(file) {
+    return new Promise((resolve, reject) => {
+        fs.unlink(file, (err) => {
+            if (err) return reject(err)
+            return resolve()
+        })
+    })
+}
+
 module.exports = {
     writeToFile,
     writeToFileAt,
@@ -145,5 +160,6 @@ module.exports = {
     readStringFromFile,
     createEmptyFile,
     createDirectory,
-    readDirectory
+    readDirectory,
+    deleteFile
 }

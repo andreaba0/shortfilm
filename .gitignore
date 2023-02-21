@@ -11,3 +11,4 @@ streaming/*
 */dist/*.js
 */blob/
 */manifest/
+.env

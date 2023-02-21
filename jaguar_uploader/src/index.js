@@ -3,6 +3,15 @@ import CryptoJs from 'crypto-js';
 
 //On page load
 (function () {
+    const host = window.location.hostname;
+    const socket = new WebSocket(`ws://${host}/pubsub`);
+    socket.onopen = () => {
+        console.log('Connected to redis pubsub');
+    }
+    socket.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        console.log(data);
+    }
 
     function isFetchOk(code) {
         return code >= 200 && code < 300;
@@ -10,7 +19,7 @@ import CryptoJs from 'crypto-js';
 
     var uploads = []
     const initUpload = async (file, videoId) => {
-        const response = await fetch(`http://192.168.178.137:3000/upload/begin/${videoId}`, {
+        const response = await fetch(`/api/upload/begin/${videoId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -25,7 +34,7 @@ import CryptoJs from 'crypto-js';
         return false
     }
     const commitUpload = async (file, videoId) => {
-        const response = await fetch(`http://192.168.178.137:3000/upload/commit/${videoId}`, {
+        const response = await fetch(`/api/upload/commit/${videoId}`, {
             method: 'POST'
         })
         if (response.status >= 200 && response.status < 300) return true
@@ -55,7 +64,7 @@ import CryptoJs from 'crypto-js';
                             async function upload() {
                                 return new Promise(async (resolve, reject) => {
                                     try {
-                                        const response = await fetch(`http://192.168.178.137:3000/upload/chunk/${videoId}`, {
+                                        const response = await fetch(`/api/upload/chunk/${videoId}`, {
                                             method: 'POST',
                                             headers: {
                                                 'Content-Type': 'application/octet-stream',

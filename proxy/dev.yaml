@@ -50,6 +50,11 @@ static_resources:
                                     seconds: 0
                                   path: "/"
                         - match:
+                            prefix: "/pubsub"
+                          route:
+                            timeout: 0s
+                            cluster: pubsub_service
+                        - match:
                             prefix: "/"
                           route:
                             cluster: frontend_service
@@ -79,3 +84,15 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 3000
+    - name: "pubsub_service"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "pubsub_service"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 3002
