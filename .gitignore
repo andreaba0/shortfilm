@@ -1,0 +1,14 @@
+*.webm
+*.m4s
+*.mpd
+node_modules/
+*.tmp
+*.mp4
+queue/*
+streaming/*
+*.txt
+*.chunk
+*/dist/*.js
+*/blob/
+*/manifest/
+.env

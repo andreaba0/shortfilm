@@ -1,0 +1,46 @@
+ffmpeg -i input.mp4 \
+-map 0:v:0 \
+-map 0:v:0 \
+-map 0:v:0 \
+-map 0:v:0 \
+-map 0:a:0 \
+-map 0:a:1 \
+-map 0:v:0 \
+-map 0:v:0 \
+-c:0 libx264 -x264opts:0 'keyint=48:min-keyint=48:no-scenecut' \
+-c:1 libx264 -x264opts:1 'keyint=48:min-keyint=48:no-scenecut' \
+-c:6 libx264 -x264opts:6 'keyint=48:min-keyint=48:no-scenecut' \
+-c:2 libvpx-vp9 \
+-c:3 libvpx-vp9 \
+-c:7 libvpx-vp9 \
+-c:4 aac \
+-c:5 aac \
+-filter:v:1 scale=720:-2 \
+-filter:v:3 scale=720:-2 \
+-filter:v:6 scale=480:-2 \
+-filter:v:7 scale=480:-2 \
+-profile:0 high \
+-profile:1 high \
+-profile:6 high \
+-metadata:s:4 language=ENG \
+-metadata:s:5 lanugage=FRA \
+-b:0 5M \
+-b:1 800k \
+-b:6 100k \
+-b:2 5M \
+-b:3 800k \
+-b:7 100k \
+-crf:0 19 \
+-crf:1 19 \
+-crf:2 19 \
+-crf:3 19 \
+-crf:6 27 \
+-crf:7 27 \
+-adaptation_sets "id=0,streams=0,1,6 id=1,streams=2,3,7 id=2,streams=4 id=3,streams=5" \
+-g 15 \
+-single_file 0 \
+-seg_duration 5 \
+-movflags frag_keyframe+empty_moov \
+-f dash \
+-gpu 0 \
+manifest.mpd

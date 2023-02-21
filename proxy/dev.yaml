@@ -1,0 +1,98 @@
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 80
+      filter_chains:
+        - filters:
+            - name: envoy.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_ws_to_ws
+                upgrade_configs:
+                  - upgrade_type: websocket
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                http_filters:
+                  - name: envoy.filters.http.dynamic_forward_proxy
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+                      dns_cache_config:
+                        name: dynamic_forward_proxy_cache_config
+                        dns_lookup_family: V4_ONLY
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: local_service
+                      domains: ["192.168.178.160", "192.168.178.137"] # Web page cluster domain
+                      routes:
+                        - match:
+                            prefix: "/_next/webpack-hmr"
+                          route:
+                            timeout: 0s
+                            cluster: frontend_service
+                        - match:
+                            prefix: "/api/"
+                          route:
+                            cluster: backend_service
+                            prefix_rewrite: "/"
+                            hash_policy:
+                              - cookie:
+                                  name: lb_sticky_key
+                                  ttl: 
+                                    seconds: 0
+                                  path: "/"
+                        - match:
+                            prefix: "/pubsub"
+                          route:
+                            timeout: 0s
+                            cluster: pubsub_service
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: frontend_service
+
+  clusters:
+    - name: "frontend_service"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "frontend_service"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: "127.0.0.1"
+                      port_value: 3001
+    - name: "backend_service"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "backend_service"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 3000
+    - name: "pubsub_service"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "pubsub_service"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: 127.0.0.1
+                      port_value: 3002

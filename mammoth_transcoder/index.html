@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <!-- Shaka Player compiled library: -->
+    <script src="https://cdn.jsdelivr.net/npm/video.js@8.0.4/dist/video.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/video.js@8.0.4/dist/video-js.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <video-js id=vid1 width=600 height=300 class="vjs-default-skin" controls>
+      </video-js>
+    <script>
+        var player = videojs('vid1');
+        player.src({ src: '/streaming/manifest.mpd', type: 'application/dash+xml' });
+        player.play();
+    </script>
+</body>
+
+</html>
