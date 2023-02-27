@@ -21,6 +21,11 @@ const crypto = require('crypto')
 
 var concurrentActiveProcesses = 0
 
+var blobDatabase = {}
+var expireBlobs = {}
+
+var processQueue = []
+
 async function deleteBlobData(blobName) {
     try {
         await deleteFile(path.join(__dirname, `blob/${blobName}.${blobDatabase[blobName].file.container}`))
@@ -57,7 +62,76 @@ setInterval(async () => {
         }));
         validateVideo(key)
     }
+    while(processQueue.length>0) {
+        var current = processQueue.shift()
+        transcodeVideo(current[0], current[1])
+    }
 }, 5000)
+
+function transcodeVideo(videoId, streams) {
+    console.log(streams)
+    console.log(`${videoId}, ${streams.length} streams`)
+    console.log(path.join(__dirname, `blob/${videoId}.${blobDatabase[videoId].file.container}`))
+    const ffmpeg = childProcess.spawn('ffmpeg', [
+        '-i', path.join(__dirname, `blob/${videoId}.${blobDatabase[videoId].file.container}`),
+        '-map', '0:v:0',
+        '-map', '0:a:0',
+        '-c:0', 'libx264', '-x264opts:0', "keyint=48:min-keyint=48:no-scenecut",
+        '-b:0', '2M',
+        '-b:1', '128k',
+        '-c:1', 'aac',
+        '-profile:0', 'main',
+        '-crf:0', '19',
+        '-adaptation_sets', '"id=0,streams=0 id=1,streams=1"',
+        '-g', '15',
+        '-single_file', '0',
+        '-seg_duration', '5',
+        '-movflags', 'frag_keyframe+empty_moov',
+        '-f', 'dash',
+        '-loglevel', 'error',
+        '-progress', 'pipe:1',
+        path.join(__dirname, `streaming/manifest_${videoId}.mpd`)
+    ], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true
+    })
+    ffmpeg.stdout.on('data', async (data) => {
+        const totalTime = parseFloat(streams[0].duration)
+        const parsedData = data.toString()
+        const regex = /out_time=(\d{2}:\d{2}:\d{2}\.\d+)/
+        const match = parsedData.match(regex)
+        const matchedParts = match[1].split(':')
+        const seconds = parseFloat(matchedParts[2])
+        const minutesToSeconds = parseFloat(matchedParts[1]) * 60
+        const hoursToSeconds = parseFloat(matchedParts[0]) * 3600
+        const totalSeconds = seconds + minutesToSeconds + hoursToSeconds
+        const progress = (totalSeconds / totalTime * 100).toFixed(2)
+        await getRedisClient().publish('any', JSON.stringify({
+            type: 'transcoding',
+            id: videoId,
+            message: `${Math.min(100, progress)}%`
+        }));
+    })
+    ffmpeg.stderr.on('data', (data) => {
+        console.log('error part:')
+        console.log(data.toString())
+    })
+    ffmpeg.on('close', async (code) => {
+        if(code!==0) {
+            await getRedisClient().publish('any', JSON.stringify({
+                type: 'transcoding',
+                id: videoId,
+                message: `failed`
+            }));
+            return
+        }
+        await getRedisClient().publish('any', JSON.stringify({
+            type: 'transcoding',
+            id: videoId,
+            message: `100%`
+        }));
+    })
+}
 
 function validateVideo(videoId) {
     const ffprobe = childProcess.spawn('ffprobe', [
@@ -99,12 +173,12 @@ function validateVideo(videoId) {
             }
             if (codecVideo === 1 && codecAudio > 0) {
                 blobDatabase[videoId].file.status = 'validated'
-                await writeStringToFile(JSON.stringify(blobDatabase[videoId]), path.join(__dirname, `manifest/${videoId}.json`))
                 await getRedisClient().publish('any', JSON.stringify({
                     type: 'validate',
                     id: videoId,
                     progress: 100
                 }));
+                processQueue.push([videoId, videoMetadata.streams])
                 return
             }
             await deleteBlobData(videoId)
@@ -135,9 +209,6 @@ app.use(bodyParser.text({ limit: '10mb' }))
 app.use(bodyParser.json({ limit: '10mb' }))
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }))
 app.use(bodyParser.raw({ limit: '10mb', type: 'application/octet-stream' }))
-
-var blobDatabase = {}
-var expireBlobs = {}
 
 app.post('/upload/begin/:video_id', async (req, res) => {
     const videoId = req.params.video_id
@@ -170,7 +241,6 @@ app.post('/upload/begin/:video_id', async (req, res) => {
             },
             options: {}
         }), path.join(__dirname, `manifest/${videoId}.json`))
-        //create an empty file in the form videoId.container
         await createEmptyFile(path.join(__dirname, `blob/${videoId}.${metadata.container}`))
         blobDatabase[videoId] = {
             file: {
@@ -244,7 +314,7 @@ app.post('/upload/cancel/:video_id', async (req, res) => {
     res.status(201).send('OK')
 })
 
-app.get('/', (req, res) => {
+app.get('/upload/view', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'))
 })
 
