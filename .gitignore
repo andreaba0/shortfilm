@@ -12,3 +12,4 @@ streaming/*
 */blob/
 */manifest/
 .env
+.next/
