@@ -124,6 +124,21 @@ function createDirectory(dir) {
 }
 
 /**
+ * This function delete a directory recursively
+ * 
+ * @param {String} dir directory to delete
+ * @returns {Promise} resolve if directory has been deleted successfully, reject if it fails
+ */
+function deleteDirectory(dir) {
+    return new Promise((resolve, reject) => {
+        fs.rmdir(dir, { recursive: true }, (err) => {
+            if (err) return reject(err)
+            return resolve()
+        })
+    })
+}
+
+/**
  * This function read all files in a directory
  * 
  * @param {String} dir directory to read
@@ -161,5 +176,6 @@ module.exports = {
     createEmptyFile,
     createDirectory,
     readDirectory,
-    deleteFile
+    deleteFile,
+    deleteDirectory
 }

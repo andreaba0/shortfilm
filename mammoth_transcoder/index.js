@@ -14,7 +14,8 @@ const {
     writeStringToFile,
     readDirectory,
     readStringFromFile,
-    deleteFile
+    deleteFile,
+    deleteDirectory
 } = require('./utility')
 const v8 = require('v8')
 const crypto = require('crypto')
@@ -64,6 +65,15 @@ setInterval(async () => {
     }
     while(processQueue.length>0) {
         var current = processQueue.shift()
+        try {
+            await createDirectory(path.join(__dirname, `streaming/${current[0]}`))
+        } catch(e) {
+            console.error(e)
+            //wait 5 seconds and try again
+            await new Promise((resolve) => setTimeout(resolve, 5000))
+            processQueue.push(current)
+            continue
+        }
         transcodeVideo(current[0], current[1])
     }
 }, 5000)
@@ -90,7 +100,7 @@ function transcodeVideo(videoId, streams) {
         '-f', 'dash',
         '-loglevel', 'error',
         '-progress', 'pipe:1',
-        path.join(__dirname, `streaming/manifest_${videoId}.mpd`)
+        path.join(__dirname, `streaming/${videoId}/manifest_${videoId}.mpd`)
     ], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
@@ -123,8 +133,16 @@ function transcodeVideo(videoId, streams) {
                 id: videoId,
                 message: `failed`
             }));
+            try {
+                await deleteDirectory(path.join(__dirname, `streaming/${videoId}`))
+            } catch(e) {
+                console.error(e)
+                blobDatabase[videoId].file.status = 'uploaded'
+            }
             return
         }
+        blobDatabase[videoId].file.status = 'transcoded'
+        await writeStringToFile(JSON.stringify(blobDatabase[videoId]), path.join(__dirname, `manifest/${videoId}.json`))
         await getRedisClient().publish('any', JSON.stringify({
             type: 'transcoding',
             id: videoId,
@@ -314,8 +332,15 @@ app.post('/upload/cancel/:video_id', async (req, res) => {
     res.status(201).send('OK')
 })
 
-app.get('/upload/view', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'))
+app.get('/video/list', async (req, res) => {
+    var list = []
+    for (const videoId in blobDatabase) {
+        list.push({
+            id: videoId,
+            name: blobDatabase[videoId].metadata.name,
+        })
+    }
+    res.status(200).send(JSON.stringify(list))
 })
 
 async function init() {
