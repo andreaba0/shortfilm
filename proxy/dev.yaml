@@ -39,6 +39,11 @@ static_resources:
                             timeout: 0s
                             cluster: frontend_service
                         - match:
+                            prefix: "/api/video/list"
+                          route:
+                            cluster: backend_service
+                            prefix_rewrite: "/video/list"
+                        - match:
                             prefix: "/api/"
                           route:
                             cluster: backend_service
@@ -49,6 +54,21 @@ static_resources:
                                   ttl: 
                                     seconds: 0
                                   path: "/"
+                        - match:
+                            prefix: "/video/player/"
+                          route:
+                            cluster: frontend_player
+                            prefix_rewrite: "/"
+                        - match:
+                            prefix: "/video/list"
+                          route:
+                            cluster: frontend_nextjs
+                            prefix_rewrite: "/"
+                        - match:
+                            prefix: "/cdn/"
+                          route:
+                            cluster: backend_service
+                            prefix_rewrite: "/"
                         - match:
                             prefix: "/pubsub"
                           route:
@@ -71,7 +91,7 @@ static_resources:
                   address:
                     socket_address:
                       address: "127.0.0.1"
-                      port_value: 3001
+                      port_value: 3004
     - name: "backend_service"
       connect_timeout: 0.25s
       type: STATIC
@@ -96,3 +116,27 @@ static_resources:
                     socket_address:
                       address: 127.0.0.1
                       port_value: 3002
+    - name: "frontend_player"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "frontend_player"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: "127.0.0.1"
+                      port_value: 3003
+    - name: "frontend_nextjs"
+      connect_timeout: 0.25s
+      type: STATIC
+      load_assignment:
+        cluster_name: "frontend_nextjs"
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: "127.0.0.1"
+                      port_value: 3004
