@@ -1,3 +1,5 @@
+import './style.css';
+
 (() => {
     var player = videojs('vid1');
     var path = window.location.pathname;
