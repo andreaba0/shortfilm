@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid')
 const bodyParser = require('body-parser')
 const childProcess = require('child_process')
 const { getClient: getRedisClient } = require('./lib/redis')
+require('dotenv').config()
 const {
     createEmptyFile,
     createDirectory,
@@ -63,11 +64,11 @@ setInterval(async () => {
         }));
         validateVideo(key)
     }
-    while(processQueue.length>0) {
+    while (processQueue.length > 0) {
         var current = processQueue.shift()
         try {
             await createDirectory(path.join(__dirname, `streaming/${current[0]}`))
-        } catch(e) {
+        } catch (e) {
             console.error(e)
             //wait 5 seconds and try again
             await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -79,28 +80,81 @@ setInterval(async () => {
 }, 5000)
 
 function transcodeVideo(videoId, streams) {
-    console.log(streams)
-    console.log(`${videoId}, ${streams.length} streams`)
-    console.log(path.join(__dirname, `blob/${videoId}.${blobDatabase[videoId].file.container}`))
+    var supported = ['2160', '1440', '1080', '720', '360']
+    var mapped = []
+    var adaptationSets = []
+    var videoBitrate = 0
+    var isVertical = 0
+    for (var i = 0; i < streams.length; i++) {
+        if (streams[i].codec_type !== 'video') continue
+        const width = parseInt(streams[i].width)
+        const height = parseInt(streams[i].height)
+        const bitrate = parseInt(streams[i].bit_rate)
+        isVertical = (width > height) ? 0 : 1
+        adaptationSets.push([])
+        for (var j = 0; j < supported.length; j++) {
+            var target = parseInt(supported[j])
+            if (target > height && isVertical) continue
+            if (target > width && !isVertical) continue
+            mapped.push([])
+            var index = mapped.length - 1
+            mapped[index].push('-map 0:v:0')
+            mapped[index].push(`-filter:v:${index}`)
+            if (isVertical===1) {
+                mapped[index].push(`"scale=-2:${target}"`)
+            } else {
+                mapped[index].push(`"scale=${target}:-2"`)
+            }
+            mapped[index].push(`-c:${index} libx264`)
+            mapped[index].push(`-x264opts:${index}`)
+            mapped[index].push('keyint=48:min-keyint=48:no-scenecut')
+            mapped[index].push(`-crf:${index}`)
+            mapped[index].push('19')
+            mapped[index].push(`-profile:${index}`)
+            mapped[index].push('high')
+            adaptationSets[adaptationSets.length - 1].push(index)
+        }
+    }
+    var audioMapIndex = 0
+    for (var i = 0; i < streams.length; i++) {
+        if (streams[i].codec_type !== 'audio') continue
+        mapped.push([])
+        var index = mapped.length - 1
+        mapped[index].push(`-map 0:a:${audioMapIndex++}`)
+        if(streams[i]?.tags?.language) {
+            mapped[index].push(`-metadata:s:a:${index}`)
+            mapped[index].push(`language=${streams[i].language}`)
+        }
+        mapped[index].push(`-c:${index} aac`)
+        mapped[index].push('-b:a 128k')
+        adaptationSets.push([])
+        adaptationSets[adaptationSets.length - 1].push(index)
+    }
+    var defaultArgs = [
+        '-i', path.join(__dirname, `blob/${videoId}.${blobDatabase[videoId].file.container}`)
+    ]
+    var parsedMap = []
+    for (var i = 0; i < mapped.length; i++) {
+        parsedMap.push(...mapped[i])
+    }
+    parsedMap.push('-adaptation_sets')
+    var temp = []
+    for (var i = 0; i < adaptationSets.length; i++) {
+        temp.push(`id=${i},streams=${adaptationSets[i].join(',')}`)
+    }
+    parsedMap.push(`"${temp.join(' ')}"`)
+    defaultArgs.push(...parsedMap)
+    defaultArgs.push('-g 15')
+    defaultArgs.push('-single_file 0')
+    defaultArgs.push('-seg_duration 5')
+    defaultArgs.push('-movflags frag_keyframe+empty_moov')
+    defaultArgs.push('-f dash')
+    defaultArgs.push('-loglevel error')
+    defaultArgs.push('-progress pipe:1')
+    defaultArgs.push(path.join(__dirname, `streaming/${videoId}/manifest_${videoId}.mpd`))
+    console.log('ffmpeg ', defaultArgs.join(' '))
     const ffmpeg = childProcess.spawn('ffmpeg', [
-        '-i', path.join(__dirname, `blob/${videoId}.${blobDatabase[videoId].file.container}`),
-        '-map', '0:v:0',
-        '-map', '0:a:0',
-        '-c:0', 'libx264', '-x264opts:0', "keyint=48:min-keyint=48:no-scenecut",
-        '-b:0', '2M',
-        '-b:1', '128k',
-        '-c:1', 'aac',
-        '-profile:0', 'main',
-        '-crf:0', '19',
-        '-adaptation_sets', '"id=0,streams=0 id=1,streams=1"',
-        '-g', '15',
-        '-single_file', '0',
-        '-seg_duration', '5',
-        '-movflags', 'frag_keyframe+empty_moov',
-        '-f', 'dash',
-        '-loglevel', 'error',
-        '-progress', 'pipe:1',
-        path.join(__dirname, `streaming/${videoId}/manifest_${videoId}.mpd`)
+        ...defaultArgs
     ], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: true
@@ -127,7 +181,7 @@ function transcodeVideo(videoId, streams) {
         console.log(data.toString())
     })
     ffmpeg.on('close', async (code) => {
-        if(code!==0) {
+        if (code !== 0) {
             await getRedisClient().publish('any', JSON.stringify({
                 type: 'transcoding',
                 id: videoId,
@@ -135,7 +189,7 @@ function transcodeVideo(videoId, streams) {
             }));
             try {
                 await deleteDirectory(path.join(__dirname, `streaming/${videoId}`))
-            } catch(e) {
+            } catch (e) {
                 console.error(e)
                 blobDatabase[videoId].file.status = 'uploaded'
             }
@@ -189,7 +243,7 @@ function validateVideo(videoId) {
                 if (videoMetadata.streams[i].codec_type === 'video') codecVideo++
                 if (videoMetadata.streams[i].codec_type === 'audio') codecAudio++
             }
-            if (codecVideo === 1 && codecAudio > 0) {
+            if (codecVideo >= 1 && codecAudio > 0) {
                 blobDatabase[videoId].file.status = 'validated'
                 await getRedisClient().publish('any', JSON.stringify({
                     type: 'validate',
@@ -347,6 +401,7 @@ async function init() {
     try {
         await createDirectory(path.join(__dirname, 'blob'))
         await createDirectory(path.join(__dirname, 'manifest'))
+        await createDirectory(path.join(__dirname, 'streaming'))
         const files = await readDirectory(path.join(__dirname, 'manifest'))
         for (const file of files) {
             const content = await readStringFromFile(path.join(__dirname, `manifest/${file}`))
@@ -362,7 +417,7 @@ async function init() {
         console.error('Error while creating directories')
         process.exit(1)
     }
-    app.listen(3000, () => {
+    app.listen(process.env.PORT || 80, () => {
         console.log('Listening on port 3000')
     })
 }
