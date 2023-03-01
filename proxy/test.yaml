@@ -31,7 +31,7 @@ static_resources:
                   name: local_route
                   virtual_hosts:
                     - name: local_service
-                      domains: ["192.168.178.160", "192.168.178.137"] # Web page cluster domain
+                      domains: [ '172.20.0.11' ] # Web page cluster domain
                       routes:
                         - match:
                             prefix: "/_next/webpack-hmr"
@@ -103,7 +103,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: 127.0.0.1
+                      address: 172.20.0.12
                       port_value: 3000
     - name: "pubsub_service"
       connect_timeout: 0.25s
