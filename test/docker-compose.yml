@@ -1,0 +1,37 @@
+version: "3.9"
+services:
+  redis:
+    image: redis
+    networks:
+      streaming-test:
+        ipv4_address: 172.20.0.10
+  web:
+    build:
+      context: ../mammoth_transcoder
+      dockerfile: Dockerfile
+    networks:
+      streaming-test:
+        ipv4_address: 172.20.0.12
+    environment:
+      - REDIS_HOST=172.20.0.10
+      - REDIS_PORT=6379
+      - PORT=3000
+  proxy:
+    build:
+      context: ../proxy
+      dockerfile: Dockerfile
+    networks:
+      streaming-test:
+        ipv4_address: 172.20.0.11
+    environment:
+      - DOMAIN=172.20.0.11
+      - BACKEND_PORT=3000
+      - BACKEND_IP=172.20.0.12
+    ports:
+      - "80:80"
+networks:
+  streaming-test:
+    internal: true
+    ipam:
+      config:
+        - subnet: "172.20.0.0/16"
