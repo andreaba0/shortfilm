@@ -1,3 +1,4 @@
 module.exports = {
-    assetPrefix: '/frontend_static/'
+    basePath: '/frontend_static',
+    assetPrefix: '/frontend_static/',
 }
