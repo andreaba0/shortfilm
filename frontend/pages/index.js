@@ -20,7 +20,7 @@ export async function getServerSideProps(context) {
 function RenderLink(props) {
     return (
         <div className="py-3 text-gray-800 font-medium text-center w-full">
-            <Link href={`/video/player/${props.link}`}>{props.name}</Link>
+            <Link href={`/player/${props.link}`}>{props.name}</Link>
         </div>
     )
 }
