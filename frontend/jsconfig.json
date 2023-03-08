@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "target": "es6",
+        "module": "commonjs",
+        "jsx": "react",
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "baseUrl": ".",
+        "paths": {
+            "@components/*": ["components/*"],
+        }
+    },
+}

@@ -1,12 +1,14 @@
 {
   "dependencies": {
+    "@videojs/http-streaming": "^2.16.2",
     "html-react-parser": "^3.0.4",
     "mpd-parser": "^0.22.1",
     "next": "^12.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.6.0",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "video.js": "^8.0.4"
   },
   "name": "frontend",
   "version": "1.0.0",
