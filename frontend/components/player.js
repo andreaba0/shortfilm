@@ -3,7 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image'
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
-import { FaPlay, FaStop, FaReplyAll } from 'react-icons/fa';
+import { FaPlay, FaStop, FaReplyAll, FaPause } from 'react-icons/fa';
+import { Player } from '@scripts/player'
 
 function ProgressBar(props) {
     var [progress, setProgress] = useState((props.currentTime * 100 / props.max));
@@ -16,8 +17,14 @@ function ProgressBar(props) {
     const domain = props.imageDomain;
 
     useEffect(() => {
+        if(seeking) return
+        setProgress((props.currentTime * 100 / props.max))
+    })
+
+    useEffect(() => {
         function mouseUp() {
-            props.seek(progress*props.max/100)
+            setProgress(progress * props.max / 100)
+            props.seek(progress * props.max / 100)
             setSeeking(false);
         }
 
@@ -58,6 +65,18 @@ function ProgressBar(props) {
 
     function getTimeString() {
         const seconds = Math.floor(time * getProgress() / 100);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const secondsLeft = seconds % 60;
+        const minutesLeft = minutes % 60;
+        if (hours > 0) {
+            return `${hours}:${minutesLeft < 10 ? '0' + minutesLeft : minutesLeft}:${secondsLeft < 10 ? '0' + secondsLeft : secondsLeft}`;
+        }
+        return `${minutesLeft}:${secondsLeft < 10 ? '0' + secondsLeft : secondsLeft}`;
+    }
+
+    function getStaticTimeString() {
+        const seconds = Math.floor(props.currentTime);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
         const secondsLeft = seconds % 60;
@@ -135,24 +154,29 @@ function ProgressBar(props) {
 
     function render() {
         return (
-            <div ref={progressBarRef} className="w-full h-1 bg-gray-200 items-start relative flex flex-row select-none"
-                onMouseEnter={() => { setHovering(true) }}
-                onMouseMove={(e) => {
-                    setMouseCoord({ x: e.clientX, y: e.clientY });
-                }}
-                onMouseLeave={() => { setHovering(false) }}>
-                {renderThumbnail()}
-                {renderShadowPoint()}
-                <div style={{ width: `${progress}%` }} className="h-full relative bg-blue-500">
-                    <div onTouchStart={(e) => {
-                        if (e.touches.length > 1) return;
-                        setMouseCoord({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-                        setSeeking(true)
-                    }} onMouseDown={(e) => {
+            <div className="w-full flex flex-row items-center justify-center">
+                <div className="text-white w-12 flex items-center justify-center text-xs">
+                    {getStaticTimeString()}
+                </div>
+                <div ref={progressBarRef} className="w-full h-1 bg-gray-200 items-start relative flex flex-row select-none"
+                    onMouseEnter={() => { setHovering(true) }}
+                    onMouseMove={(e) => {
                         setMouseCoord({ x: e.clientX, y: e.clientY });
-                        setSeeking(true)
-                    }} className="w-5 h-5 z-20 rounded-full bg-blue-500 absolute -top-2 -right-2 hover:scale-110">
+                    }}
+                    onMouseLeave={() => { setHovering(false) }}>
+                    {renderThumbnail()}
+                    {renderShadowPoint()}
+                    <div style={{ width: `${progress}%` }} className="h-full relative bg-blue-500">
+                        <div onTouchStart={(e) => {
+                            if (e.touches.length > 1) return;
+                            setMouseCoord({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+                            setSeeking(true)
+                        }} onMouseDown={(e) => {
+                            setMouseCoord({ x: e.clientX, y: e.clientY });
+                            setSeeking(true)
+                        }} className="w-5 h-5 z-20 rounded-full bg-blue-500 absolute -top-2 -right-2 hover:scale-110">
 
+                        </div>
                     </div>
                 </div>
             </div>
@@ -164,9 +188,9 @@ function ProgressBar(props) {
 
 function PlayerAction(props) {
     function render() {
-        if (props.status === 'play') return (<FaStop onClick={() => props.action('stop')} size={19} />)
+        if (props.status === 'play') return (<FaPause onClick={() => props.action('stop')} size={19} />)
         if (props.status === 'stop') return (<FaPlay onClick={() => props.action('play')} size={19} />)
-        return (<FaReplyAll onClick={() => props.action('replay')} size={19} />)
+        return (<FaReplyAll onClick={() => props.action('play')} size={19} />)
     }
     return render()
 }
@@ -191,20 +215,52 @@ export function VideoPlayer(props) {
     }
 
     useEffect(() => {
+        if (playerRef.current) return;
         const video = videoRef.current;
         playerRef.current = videojs(video, {
             sources: [{
                 src: props.manifest,
                 type: 'application/dash+xml'
             }],
-            controls: false
+            controls: false,
+            loadingSpinner: false,
         })
-        video.addEventListener('timeupdate', () => {
-            setProgress(playerRef.current.currentTime())
-        })
+
+        return () => {
+            playerRef.current.dispose();
+        }
     }, [props.manifest])
 
     useEffect(() => {
+        if (!playerRef.current) return;
+        const video = videoRef.current;
+        function playerTimeUpdate(e) {
+            setProgress(playerRef.current.currentTime())
+        }
+
+        function playerEnded() {
+            setPlayStatus('replay')
+        }
+        function playerPlay() {
+            setPlayStatus('play')
+        }
+        function playerPause() {
+            setPlayStatus('stop')
+        }
+        video.addEventListener('timeupdate', playerTimeUpdate)
+        video.addEventListener('ended', playerEnded)
+        video.addEventListener('play', playerPlay)
+        video.addEventListener('pause', playerPause)
+        return () => {
+            video.removeEventListener('timeupdate', playerTimeUpdate)
+            video.removeEventListener('ended', playerEnded)
+            video.removeEventListener('play', playerPlay)
+            video.removeEventListener('pause', playerPause)
+        }
+    })
+
+    useEffect(() => {
+        const video = videoRef.current;
         if (openMenu) return;
         const videoDiv = document.getElementById('video-element');
         function openMenuEvent() {
@@ -228,6 +284,7 @@ export function VideoPlayer(props) {
     }, [playStatus])
 
     function seekToTime(time) {
+        setProgress(time);
         playerRef.current.currentTime(time);
     }
 
@@ -235,11 +292,11 @@ export function VideoPlayer(props) {
         if (!openMenu) return null;
         return (
             <div className="w-full h-full flex flex-col items-center justify-end absolute top-0 left-0">
-                <div className="w-full flex flex-row items-center justify-center space-x-4 h-14">
+                <div className="w-full flex flex-row items-center justify-center h-14">
                     <div className="w-8 h-5 flex items-center justify-center cursor-pointer text-white">
                         <PlayerAction status={playStatus} action={setPlayStatus} />
                     </div>
-                    <div className="flex-grow relative px-3 box-border">
+                    <div className="flex-grow relative">
                         <ProgressBar max={3558} thumbnails={props.thumbnails} currentTime={progress} seek={seekToTime} />
                     </div>
                 </div>
@@ -249,7 +306,8 @@ export function VideoPlayer(props) {
 
     return (
         <div id="video-element" className="flex w-full h-full items-center justify-center flex-col relative bg-black">
-            <video className="w-full h-full" ref={videoRef} id="video" controls={false} />
+            <video ref={videoRef} id="video" controls={false} className="video-js" />
+            <style>{`.vjs-default-skin.vjs-seeking .vjs-loading-spinner { display: none; }`}</style>
             {renderMenu()}
         </div>
     )
