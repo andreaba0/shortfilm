@@ -154,7 +154,7 @@ function ProgressBar(props) {
     function render() {
         return (
             <div className="w-full flex flex-row items-center justify-center">
-                <div className="text-white w-12 flex items-center justify-center text-xs">
+                <div className="text-white w-20 flex items-center justify-center text-xs">
                     {getStaticTimeString()}
                 </div>
                 <div ref={progressBarRef} className="w-full h-1 bg-gray-200 items-start relative flex flex-row select-none"
@@ -187,6 +187,7 @@ function ProgressBar(props) {
 
 function PlayerAction(props) {
     function render() {
+        if (props.seeking) return (<div className="spinner"></div>)
         if (props.status === 'play') return (<FaPause onClick={() => props.action('stop')} size={19} />)
         if (props.status === 'stop') return (<FaPlay onClick={() => props.action('play')} size={19} />)
         return (<FaReplyAll onClick={() => props.action('play')} size={19} />)
@@ -213,6 +214,7 @@ export function VideoPlayer(props) {
     var [isInitialized, setIsInitialized] = useState(false);
     var [fullscreen, setFullscreen] = useState(false);
     var [zoom, setZoom] = useState(false);
+    var [seeking, setSeeking] = useState(false);
 
     function renderFullScreen() {
         if (!fullscreen) return (<FaExpand onClick={() => setFullscreen(true)} size={19} />)
@@ -246,20 +248,6 @@ export function VideoPlayer(props) {
                 })
         })
     }
-
-    /*useEffect(() => {
-        const video = videoRef.current;
-        function mouseLeave() {
-            setOpenMenu(false);
-        }
-
-        video.addEventListener('mouseleave', mouseLeave);
-        document.addEventListener('mouseleave', mouseLeave);
-        return () => {
-            video.removeEventListener('mouseleave', mouseLeave);
-            document.removeEventListener('mouseleave', mouseLeave);
-        }
-    })*/
 
     useEffect(() => {
         if (playerRef.current) return;
@@ -317,44 +305,44 @@ export function VideoPlayer(props) {
             setPlayStatus('stop')
         }
         function playerSeeked() {
-
+            setSeeking(false)
+        }
+        function playerSeeking() {
+            setSeeking(true)
         }
         video.addEventListener('timeupdate', playerTimeUpdate)
         video.addEventListener('ended', playerEnded)
         video.addEventListener('play', playerPlay)
         video.addEventListener('pause', playerPause)
         video.addEventListener('seeked', playerSeeked)
+        video.addEventListener('seeking', playerSeeking)
         return () => {
             video.removeEventListener('timeupdate', playerTimeUpdate)
             video.removeEventListener('ended', playerEnded)
             video.removeEventListener('play', playerPlay)
             video.removeEventListener('pause', playerPause)
             video.removeEventListener('seeked', playerSeeked)
+            video.removeEventListener('seeking', playerSeeking)
         }
     })
 
     useEffect(() => {
         if (openMenu) return;
-        const videoDiv = videoRef.current;
+        const video = videoRef.current;
         function openMenuEvent(e) {
-            if(e.touches&&e.touches.length>1) return;
             setOpenMenu(true);
         }
-        videoDiv.addEventListener('click', openMenuEvent)
-        videoDiv.addEventListener('mouseover', openMenuEvent)
-        videoDiv.addEventListener('touchstart', openMenuEvent)
+        video.addEventListener('click', openMenuEvent)
         return () => {
-            videoDiv.removeEventListener('click', openMenuEvent)
-            videoDiv.removeEventListener('mouseover', openMenuEvent)
-            videoDiv.removeEventListener('touchstart', openMenuEvent)
+            video.removeEventListener('click', openMenuEvent)
         }
     }, [openMenu])
 
     useEffect(() => {
         const video = videoRef.current;
-        if (playStatus === 'play') {
+        if (playStatus === 'play' && !seeking) {
             video.play();
-        } else if (playStatus === 'stop') {
+        } else if (playStatus === 'stop' && !seeking) {
             video.pause();
         }
     }, [playStatus])
@@ -367,32 +355,39 @@ export function VideoPlayer(props) {
     function renderMenu() {
         if (!openMenu) return null;
         return (
-            <div className="w-full h-full flex flex-col items-center justify-end fixed bottom-0 left-0">
-                <div className="w-full max-w-5xl flex flex-row items-center justify-center h-14">
-                    <div className="w-8 h-5 flex items-center justify-center cursor-pointer text-white">
-                        <PlayerAction status={playStatus} action={setPlayStatus} />
+            <div className="w-full h-full fixed bottom-0 left-0 bg-gray-800 bg-opacity-70">
+                <div className="w-full h-full relative">
+                    <div className="text-white w-20 h-20 absolute top-0 right-0 cursor-pointer">
+                        <div className="w-full h-full flex items-center justify-center">
+                            <MdOutlineClose onClick={() => setOpenMenu(false)} size={30} />
+                        </div>
                     </div>
-                    <div className="flex-grow relative">
-                        <ProgressBar max={3558} thumbnails={props.thumbnails} currentTime={progress} seek={seekToTime} />
+                    <div className="w-full flex flex-row items-center justify-center h-14 absolute left-0 bottom-0">
+                        <div className="w-8 h-5 flex items-center justify-center cursor-pointer text-white">
+                            <PlayerAction status={playStatus} seeking={seeking} action={setPlayStatus} />
+                        </div>
+                        <div className="flex-grow relative max-w-lg">
+                            <ProgressBar max={3558} thumbnails={props.thumbnails} currentTime={progress} seek={seekToTime} />
+                        </div>
+                        <div className="text-white cursor-pointer w-8 h-8 flex items-center justify-center">
+                            {renderFullScreen()}
+                        </div>
+                        {renderZoom()}
                     </div>
-                    <div className="text-white cursor-pointer w-8 h-8 flex items-center justify-center">
-                        {renderFullScreen()}
-                    </div>
-                    {renderZoom()}
                 </div>
             </div>
         )
     }
 
     function renderZoom() {
-        if(!fullscreen) {
-            if(zoom===true) {
+        if (!fullscreen) {
+            if (zoom === true) {
                 setZoom(false);
                 videoRef.current.style.objectFit = 'contain';
             }
             return (null)
         }
-        if(zoom===true) {
+        if (zoom === true) {
             videoRef.current.style.objectFit = 'cover';
         } else {
             videoRef.current.style.objectFit = 'contain';
@@ -414,34 +409,4 @@ export function VideoPlayer(props) {
             {renderMenu()}
         </div>
     )
-}
-
-function styles() {
-    return `
-    .video-dimensions {
-        width: auto;
-        heigth: auto;
-        padding: 0;
-    }
-    `
-}
-
-function UpdateVideo(props) {
-    useEffect(() => {
-        function resize() {
-            const ratio = 0.56
-            const video = props.video.current;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            video.style.width = `${width}px`
-            video.style.height = `${width * ratio}px`
-        }
-        document.addEventListener('resize', resize)
-        resize();   
-        return () => {
-            document.removeEventListener('resize', resize)
-        }
-    })
-
-    return (null)
 }

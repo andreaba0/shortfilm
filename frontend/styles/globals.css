@@ -69,13 +69,39 @@ video {
     }
 }
 
-.video-dimensions {
-    padding: 0 !important;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-}
-
 .video-dimensions video {
     mex-height: 100vh;
+}
+
+.spinner {
+    position: relative;
+    width: 21px;
+    height: 21px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    border-top-color: #3b82f6;
+    border-bottom-color: #3b82f6;
+    animation: spin 2s linear infinite;
+}
+
+.spinner::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50%;
+    height: 50%;
+    background-color: #f0f0f0;
+    border-radius: 50%;
+    transform-origin: left bottom;
+    transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }
