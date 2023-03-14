@@ -333,8 +333,10 @@ export function VideoPlayer(props) {
             setOpenMenu(true);
         }
         video.addEventListener('click', openMenuEvent)
+        video.addEventListener('touchstart', openMenuEvent)
         return () => {
             video.removeEventListener('click', openMenuEvent)
+            video.removeEventListener('touchstart', openMenuEvent)
         }
     }, [openMenu])
 
