@@ -19,12 +19,10 @@ export async function getServerSideProps(context) {
 
 
 export default function PlayerPage(props) {
+
     return (
-        <div className="w-screen relative py-14 px-6 flex flex-col items-center">
-            <div className="w-full h-72 flex items-center justify-center">
-                Video
-            </div>
-            <div className="w-full max-w-sm h-72">
+        <div className="w-screen overflow-x-hidden relative flex flex-col items-center h-screen max-h-screen overflow-y-hidden">
+            <div className="w-full h-full">
                 <VideoPlayer 
                     manifest={`http://${props.domain}/cdn/streaming/${props.video_id}/manifest_${props.video_id}.mpd`}
                     thumbnails={`http://${props.domain}/cdn/streaming/${props.video_id}/`}

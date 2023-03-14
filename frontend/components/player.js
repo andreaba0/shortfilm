@@ -3,27 +3,26 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image'
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
-import { FaPlay, FaStop, FaReplyAll, FaPause } from 'react-icons/fa';
+import { FaPlay, FaStop, FaReplyAll, FaPause, FaExpand, FaCompress } from 'react-icons/fa';
+import { MdOutlineClose, MdZoomIn, MdZoomOut } from 'react-icons/md'
 import { Player } from '@scripts/player'
 
 function ProgressBar(props) {
     var [progress, setProgress] = useState((props.currentTime * 100 / props.max));
     var [seeking, setSeeking] = useState(false);
     var [hovering, setHovering] = useState(false);
-    var [shadowProgress, setShadowProgress] = useState(0);
     var [mouseCoord, setMouseCoord] = useState({ x: 0, y: 0 });
     const progressBarRef = useRef(null);
     const time = props.max;
     const domain = props.imageDomain;
 
     useEffect(() => {
-        if(seeking) return
+        if (seeking) return
         setProgress((props.currentTime * 100 / props.max))
     })
 
     useEffect(() => {
         function mouseUp() {
-            setProgress(progress * props.max / 100)
             props.seek(progress * props.max / 100)
             setSeeking(false);
         }
@@ -195,13 +194,47 @@ function PlayerAction(props) {
     return render()
 }
 
+function ZoomAction(props) {
+    function render() {
+        if (props.status === true) return (<MdZoomOut onClick={() => props.action(false)} size={24} />)
+        if (props.status === false) return (<MdZoomIn onClick={() => props.action(true)} size={24} />)
+        return null
+    }
+    return render()
+}
+
 export function VideoPlayer(props) {
     var [openMenu, setOpenMenu] = useState(false);
     const videoRef = useRef(null);
     const playerRef = useRef(null);
+    const videoDiv = useRef(null);
     var [playStatus, setPlayStatus] = useState('stop');
     var [progress, setProgress] = useState(0);
     var [isInitialized, setIsInitialized] = useState(false);
+    var [fullscreen, setFullscreen] = useState(false);
+    var [zoom, setZoom] = useState(false);
+
+    function renderFullScreen() {
+        if (!fullscreen) return (<FaExpand onClick={() => setFullscreen(true)} size={19} />)
+        return (<FaCompress onClick={() => setFullscreen(false)} size={19} />)
+    }
+
+    useEffect(() => {
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement && !fullscreen) setFullscreen(true)
+            if (!document.fullscreenElement && fullscreen) setFullscreen(false)
+        })
+    })
+
+    useEffect(() => {
+        if (!videoDiv.current) return;
+        if (!videoDiv.current.requestFullscreen) return;
+        if (fullscreen) {
+            videoDiv.current.requestFullscreen();
+            return
+        }
+        if (document.fullscreenElement) document.exitFullscreen();
+    }, [fullscreen])
 
 
     function getBufferFromApi(path) {
@@ -214,20 +247,55 @@ export function VideoPlayer(props) {
         })
     }
 
+    /*useEffect(() => {
+        const video = videoRef.current;
+        function mouseLeave() {
+            setOpenMenu(false);
+        }
+
+        video.addEventListener('mouseleave', mouseLeave);
+        document.addEventListener('mouseleave', mouseLeave);
+        return () => {
+            video.removeEventListener('mouseleave', mouseLeave);
+            document.removeEventListener('mouseleave', mouseLeave);
+        }
+    })*/
+
     useEffect(() => {
         if (playerRef.current) return;
         const video = videoRef.current;
-        playerRef.current = videojs(video, {
+        playerRef.current = videojs("#video", {
             sources: [{
                 src: props.manifest,
                 type: 'application/dash+xml'
             }],
+            html5: {
+                vhs: {
+                    overrideNative: true,
+                    useDevicePixelRatio: true,
+                    useBandwidthFromLocalStorage: true,
+                    bandwidth: 16777216,
+                    enableLowInitialPlaylist: false,
+                    limitRenditionByPlayerDimensions: true,
+                }
+            },
             controls: false,
             loadingSpinner: false,
+            nativeControlsForTouch: false,
+            controlBar: {
+                children: []
+            },
+            //fluid: true,
+            fill: true,
+            //responsive: true,
         })
+        //playerRef.current.dimensions('100%', '100%');
+        playerRef.current.removeChild('BigPlayButton');
+        playerRef.current.removeChild('ControlBar');
 
         return () => {
-            playerRef.current.dispose();
+            //if(!playerRef.current) return;
+            //playerRef.current.dispose();
         }
     }, [props.manifest])
 
@@ -235,6 +303,7 @@ export function VideoPlayer(props) {
         if (!playerRef.current) return;
         const video = videoRef.current;
         function playerTimeUpdate(e) {
+            if (!playerRef.current) return;
             setProgress(playerRef.current.currentTime())
         }
 
@@ -247,30 +316,37 @@ export function VideoPlayer(props) {
         function playerPause() {
             setPlayStatus('stop')
         }
+        function playerSeeked() {
+
+        }
         video.addEventListener('timeupdate', playerTimeUpdate)
         video.addEventListener('ended', playerEnded)
         video.addEventListener('play', playerPlay)
         video.addEventListener('pause', playerPause)
+        video.addEventListener('seeked', playerSeeked)
         return () => {
             video.removeEventListener('timeupdate', playerTimeUpdate)
             video.removeEventListener('ended', playerEnded)
             video.removeEventListener('play', playerPlay)
             video.removeEventListener('pause', playerPause)
+            video.removeEventListener('seeked', playerSeeked)
         }
     })
 
     useEffect(() => {
-        const video = videoRef.current;
         if (openMenu) return;
-        const videoDiv = document.getElementById('video-element');
-        function openMenuEvent() {
+        const videoDiv = videoRef.current;
+        function openMenuEvent(e) {
+            if(e.touches&&e.touches.length>1) return;
             setOpenMenu(true);
         }
         videoDiv.addEventListener('click', openMenuEvent)
         videoDiv.addEventListener('mouseover', openMenuEvent)
+        videoDiv.addEventListener('touchstart', openMenuEvent)
         return () => {
             videoDiv.removeEventListener('click', openMenuEvent)
             videoDiv.removeEventListener('mouseover', openMenuEvent)
+            videoDiv.removeEventListener('touchstart', openMenuEvent)
         }
     }, [openMenu])
 
@@ -291,24 +367,81 @@ export function VideoPlayer(props) {
     function renderMenu() {
         if (!openMenu) return null;
         return (
-            <div className="w-full h-full flex flex-col items-center justify-end absolute top-0 left-0">
-                <div className="w-full flex flex-row items-center justify-center h-14">
+            <div className="w-full h-full flex flex-col items-center justify-end fixed bottom-0 left-0">
+                <div className="w-full max-w-5xl flex flex-row items-center justify-center h-14">
                     <div className="w-8 h-5 flex items-center justify-center cursor-pointer text-white">
                         <PlayerAction status={playStatus} action={setPlayStatus} />
                     </div>
                     <div className="flex-grow relative">
                         <ProgressBar max={3558} thumbnails={props.thumbnails} currentTime={progress} seek={seekToTime} />
                     </div>
+                    <div className="text-white cursor-pointer w-8 h-8 flex items-center justify-center">
+                        {renderFullScreen()}
+                    </div>
+                    {renderZoom()}
                 </div>
             </div>
         )
     }
 
+    function renderZoom() {
+        if(!fullscreen) {
+            if(zoom===true) {
+                setZoom(false);
+                videoRef.current.style.objectFit = 'contain';
+            }
+            return (null)
+        }
+        if(zoom===true) {
+            videoRef.current.style.objectFit = 'cover';
+        } else {
+            videoRef.current.style.objectFit = 'contain';
+        }
+        return (
+            <div className="w-8 h-5 flex items-center justify-center cursor-pointer text-white">
+                <ZoomAction status={zoom} action={setZoom} />
+            </div>
+        )
+    }
+
     return (
-        <div id="video-element" className="flex w-full h-full items-center justify-center flex-col relative bg-black">
-            <video ref={videoRef} id="video" controls={false} className="video-js" />
+        <div ref={videoDiv} id="video-element" className="flex w-full h-full items-center justify-center flex-col relative bg-black">
+            <div className="w-full h-full flex items-center justify-center">
+                <video ref={videoRef} id="video" />
+            </div>
             <style>{`.vjs-default-skin.vjs-seeking .vjs-loading-spinner { display: none; }`}</style>
+            <style>{`.video-js {padding: 0;}`}</style>
             {renderMenu()}
         </div>
     )
+}
+
+function styles() {
+    return `
+    .video-dimensions {
+        width: auto;
+        heigth: auto;
+        padding: 0;
+    }
+    `
+}
+
+function UpdateVideo(props) {
+    useEffect(() => {
+        function resize() {
+            const ratio = 0.56
+            const video = props.video.current;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            video.style.width = `${width}px`
+            video.style.height = `${width * ratio}px`
+        }
+        document.addEventListener('resize', resize)
+        resize();   
+        return () => {
+            document.removeEventListener('resize', resize)
+        }
+    })
+
+    return (null)
 }
