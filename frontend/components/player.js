@@ -3,9 +3,20 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image'
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
-import { FaPlay, FaStop, FaReplyAll, FaPause, FaExpand, FaCompress } from 'react-icons/fa';
-import { MdOutlineClose, MdZoomIn, MdZoomOut } from 'react-icons/md'
+import {
+    FaPlay,
+    FaStop,
+    FaReplyAll,
+    FaPause,
+    FaExpand,
+    FaCompress,
+    FaExpandAlt,
+    FaCompressAlt,
+    FaCheck
+} from 'react-icons/fa';
+import { MdOutlineClose, MdZoomIn, MdZoomOut, MdOutlineSpeakerNotes } from 'react-icons/md'
 import { Player } from '@scripts/player'
+import { v4 as uuidv4 } from 'uuid';
 
 function ProgressBar(props) {
     var [progress, setProgress] = useState((props.currentTime * 100 / props.max));
@@ -197,11 +208,46 @@ function PlayerAction(props) {
 
 function ZoomAction(props) {
     function render() {
-        if (props.status === true) return (<MdZoomOut onClick={() => props.action(false)} size={24} />)
-        if (props.status === false) return (<MdZoomIn onClick={() => props.action(true)} size={24} />)
+        if (props.status === true) return (<FaCompressAlt onClick={() => props.action(false)} size={19} />)
+        if (props.status === false) return (<FaExpandAlt onClick={() => props.action(true)} size={19} />)
         return null
     }
     return render()
+}
+
+function LanguageOption(props) {
+    return (
+        <div onClick={props.onClick} className="flex items-center justify-start flex-row h-14 cursor-pointer">
+            <div className="w-16 h-full flex items-center justify-center">
+                {(props.enabled) ? <FaCheck size={19} /> : null}
+            </div>
+            <div className="h-full flex items-center justify-center text-white text-base">
+                {props.language}
+            </div>
+        </div>
+    )
+}
+
+function LanguageMenu(props) {
+    function renderList() {
+        var res = []
+        for (let i = 0; i < props.languages.length; i++) {
+            let currentLang = props.languages[i].language;
+            res.push(
+                <LanguageOption key={uuidv4()} enabled={props.languages[i].enabled} language={currentLang} onClick={() => {
+                    props.select(i)
+                }} />
+            )
+        }
+        return res
+    }
+    return (
+        <div className="w-full select-none h-full box-border pl-6 absolute z-30 top-0 left-0 bg-gray-800 text-white overflow-y-hidden">
+            <div className="w-full h-full flex flex-col items-start justify-center max-h-96 overflow-y-scroll">
+                {renderList()}
+            </div>
+        </div>
+    )
 }
 
 export function VideoPlayer(props) {
@@ -215,6 +261,7 @@ export function VideoPlayer(props) {
     var [fullscreen, setFullscreen] = useState(false);
     var [zoom, setZoom] = useState(false);
     var [seeking, setSeeking] = useState(false);
+    var [langSelectionOpen, setLangSelectionOpen] = useState(false);
 
     function renderFullScreen() {
         if (!fullscreen) return (<FaExpand onClick={() => setFullscreen(true)} size={19} />)
@@ -354,14 +401,32 @@ export function VideoPlayer(props) {
         playerRef.current.currentTime(time);
     }
 
+    function changeLanguage(lang) {
+        playerRef.current.audioTracks().tracks_[lang].enabled = true;
+        setLangSelectionOpen(false);
+    }
+
+    function renderLanguageSelection() {
+        if (!langSelectionOpen) return (null)
+        return (
+            <LanguageMenu select={changeLanguage} languages={playerRef.current.audioTracks().tracks_} />
+        )
+    }
+
     function renderMenu() {
         if (!openMenu) return null;
         return (
             <div className="w-full h-full fixed bottom-0 left-0 bg-gray-800 bg-opacity-70">
                 <div className="w-full h-full relative">
-                    <div className="text-white w-20 h-20 absolute top-0 right-0 cursor-pointer">
-                        <div className="w-full h-full flex items-center justify-center">
-                            <MdOutlineClose onClick={() => setOpenMenu(false)} size={30} />
+                    {renderLanguageSelection()}
+                    <div className="text-white absolute top-0 right-0 cursor-pointer">
+                        <div className="w-full h-full flex flex-row items-center justify-end">
+                            <div className="p-4">
+                                {renderZoom()}
+                            </div>
+                            <div className="p-4">
+                                <MdOutlineClose onClick={() => setOpenMenu(false)} size={30} />
+                            </div>
                         </div>
                     </div>
                     <div className="w-full flex flex-row items-center justify-center h-14 absolute left-0 bottom-0">
@@ -374,7 +439,9 @@ export function VideoPlayer(props) {
                         <div className="text-white cursor-pointer w-8 h-8 flex items-center justify-center">
                             {renderFullScreen()}
                         </div>
-                        {renderZoom()}
+                        <div className="w-8 h-8 text-white flex items-center justify-center cursor-pointer">
+                            <MdOutlineSpeakerNotes onClick={() => setLangSelectionOpen(true)} size={21} />
+                        </div>
                     </div>
                 </div>
             </div>
