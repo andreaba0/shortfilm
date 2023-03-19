@@ -1,8 +1,6 @@
 import { parse as mpdParser } from 'mpd-parser';
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image'
-import videojs from 'video.js';
-import 'video.js/dist/video-js.css';
 import {
     FaPlay,
     FaStop,
@@ -232,10 +230,10 @@ function LanguageMenu(props) {
     function renderList() {
         var res = []
         for (let i = 0; i < props.languages.length; i++) {
-            let currentLang = props.languages[i].language;
+            let currentLang = props.languages[i].lang;
             res.push(
-                <LanguageOption key={uuidv4()} enabled={props.languages[i].enabled} language={currentLang} onClick={() => {
-                    props.select(i)
+                <LanguageOption key={uuidv4()} enabled={currentLang===props.current} language={currentLang} onClick={() => {
+                    props.select(props.languages[i])
                 }} />
             )
         }
@@ -261,7 +259,7 @@ export function VideoPlayer(props) {
     var [fullscreen, setFullscreen] = useState(false);
     var [zoom, setZoom] = useState(false);
     var [seeking, setSeeking] = useState(false);
-    var [langSelectionOpen, setLangSelectionOpen] = useState(false);
+    var [langSelectionOpen, setLangSelectionOpen] = useState(null);
 
     function renderFullScreen() {
         if (!fullscreen) return (<FaExpand onClick={() => setFullscreen(true)} size={19} />)
@@ -297,41 +295,18 @@ export function VideoPlayer(props) {
     }
 
     useEffect(() => {
-        if (playerRef.current) return;
-        const video = videoRef.current;
-        playerRef.current = videojs("#video", {
-            sources: [{
-                src: props.manifest,
-                type: 'application/dash+xml'
-            }],
-            html5: {
-                vhs: {
-                    overrideNative: true,
-                    useDevicePixelRatio: true,
-                    useBandwidthFromLocalStorage: true,
-                    bandwidth: 16777216,
-                    enableLowInitialPlaylist: false,
-                    limitRenditionByPlayerDimensions: true,
-                }
-            },
-            controls: false,
-            loadingSpinner: false,
-            nativeControlsForTouch: false,
-            controlBar: {
-                children: []
-            },
-            //fluid: true,
-            fill: true,
-            //responsive: true,
-        })
-        //playerRef.current.dimensions('100%', '100%');
-        playerRef.current.removeChild('BigPlayButton');
-        playerRef.current.removeChild('ControlBar');
-
-        return () => {
-            //if(!playerRef.current) return;
-            //playerRef.current.dispose();
+        async function init() {
+            if (typeof window === 'undefined') return;
+            if (playerRef.current) return;
+            const video = videoRef.current;
+            const dashjs = (await import('dashjs')).default;
+            playerRef.current = dashjs.MediaPlayer().create();
+            playerRef.current.initialize(video, props.manifest, true);
+            playerRef.current.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, (e) => {
+                setLangSelectionOpen(false)
+            })
         }
+        init();
     }, [props.manifest])
 
     useEffect(() => {
@@ -339,7 +314,8 @@ export function VideoPlayer(props) {
         const video = videoRef.current;
         function playerTimeUpdate(e) {
             if (!playerRef.current) return;
-            setProgress(playerRef.current.currentTime())
+            setPlayStatus('play')
+            setProgress(video.currentTime)
         }
 
         function playerEnded() {
@@ -398,18 +374,22 @@ export function VideoPlayer(props) {
 
     function seekToTime(time) {
         setProgress(time);
-        playerRef.current.currentTime(time);
+        videoRef.current.currentTime = time;
     }
 
     function changeLanguage(lang) {
-        playerRef.current.audioTracks().tracks_[lang].enabled = true;
+        playerRef.current.setCurrentTrack(lang);
         setLangSelectionOpen(false);
     }
 
     function renderLanguageSelection() {
         if (!langSelectionOpen) return (null)
         return (
-            <LanguageMenu select={changeLanguage} languages={playerRef.current.audioTracks().tracks_} />
+            <LanguageMenu 
+                select={changeLanguage} 
+                languages={playerRef.current.getTracksFor('audio')} 
+                current={playerRef.current.getCurrentTrackFor('audio').lang} 
+            />
         )
     }
 
@@ -440,7 +420,7 @@ export function VideoPlayer(props) {
                             {renderFullScreen()}
                         </div>
                         <div className="w-8 h-8 text-white flex items-center justify-center cursor-pointer">
-                            <MdOutlineSpeakerNotes onClick={() => setLangSelectionOpen(true)} size={21} />
+                            {(langSelectionOpen!==null) ? <MdOutlineSpeakerNotes onClick={() => setLangSelectionOpen(true)} size={21} /> : null}
                         </div>
                     </div>
                 </div>
@@ -473,8 +453,6 @@ export function VideoPlayer(props) {
             <div className="w-full h-full flex items-center justify-center">
                 <video ref={videoRef} id="video" />
             </div>
-            <style>{`.vjs-default-skin.vjs-seeking .vjs-loading-spinner { display: none; }`}</style>
-            <style>{`.video-js {padding: 0;}`}</style>
             {renderMenu()}
         </div>
     )

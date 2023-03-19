@@ -6,8 +6,6 @@ import {VideoPlayer} from '@components/player';
 export async function getServerSideProps(context) {
     const { params } = context;
     const { id } = params;
-    const manifestApi = await fetch(`http://${process.env.BACKEND_URL}/cdn/streaming/${id}/manifest_${id}.mpd`);
-    const manifest = mpdParser(await manifestApi.text())
     return {
         props: {
             domain: context.req.headers.host,
