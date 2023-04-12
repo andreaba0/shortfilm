@@ -1,0 +1,15 @@
+[package]
+name = "mammoth_transcoder_rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ctrlc = "3.2.5"
+rand = "0.8.5"
+try-catch = "0.2.2"
+
+[[bin]]
+name = "mammoth_transcoder_rust"
+path = "main.rs"
