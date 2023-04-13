@@ -6,10 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ctrlc = "3.2.5"
+axum = "0.6.15"
+futures = "0.3.28"
 json = "0.12.4"
-rand = "0.8.5"
-try-catch = "0.2.2"
+tokio = { version = "1.27.0", features = ["macros", "rt-multi-thread"] }
 
 [[bin]]
 name = "mammoth_transcoder_rust"
