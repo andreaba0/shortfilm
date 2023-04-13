@@ -1,20 +1,13 @@
-use std::{thread, time};
+use std::{thread};
 use std::sync::{Arc, Mutex};
 use std::string::String;
-use rand::Rng;
 use std::path::Path;
 use std::env;
 use std::fs;
 use std::collections::HashMap;
+mod types;
 mod transcoder;
-
-struct Job {
-    id: i32,
-}
-
-struct File {
-    path: String,
-}
+mod garbage_collector;
 
 fn main() {
     let work_dir = env::var("TRANSCODER_DATABASE_DIR").unwrap_or(String::from(""));
@@ -43,79 +36,93 @@ fn main() {
         }
     }
 
-    let file_deletion_queue: Arc<Mutex<Vec<File>>> = Arc::new(Mutex::new(
+    let file_deletion_queue: Arc<Mutex<Vec<types::File>>> = Arc::new(Mutex::new(
         Vec::new()
     ));
-    let mut blobMap = HashMap::new();
+    let mut blob_map: HashMap<String, String> = HashMap::new();
+    let mut manifest_map: HashMap<String, String> = HashMap::new();
 
     let paths = fs::read_dir(format!("{}{}", work_dir, "blob/").as_str()).unwrap();
     for path in paths {
-        //get file name from path without extension
-        let file_name = path.unwrap().path().file_name().unwrap().to_str().unwrap().to_string();
+        let path_buf = path.unwrap().path().clone();
+        let path_name = path_buf.to_str().unwrap().to_string();
+        let file_name = path_buf.file_name().unwrap().to_str().unwrap().to_string();
+        let file_name = file_name.split('.').next().unwrap().to_string();
         println!("Entry: {}", file_name);
-        blobMap.insert(file_name, true);
+        blob_map.insert(file_name, path_name);
     }
     let paths = fs::read_dir(format!("{}{}", work_dir, "manifest/").as_str()).unwrap();
     for path in paths {
-        //get file name from path without extension
-        let file_name = path.unwrap().path().file_name().unwrap().to_str().unwrap().to_string();
+        let path_buf = path.unwrap().path().clone();
+        let path_name = path_buf.to_str().unwrap().to_string();
+        let file_name = path_buf.file_name().unwrap().to_str().unwrap().to_string();
+        let file_name = file_name.split('.').next().unwrap().to_string();
         println!("Entry: {}", file_name);
-        if blobMap.contains_key(&file_name) {
-            println!("Entry: {} exists in blob", file_name);
-        } else {
-            println!("Entry: {} does not exist in blob", file_name);
-            let mut guard = file_deletion_queue.lock().unwrap();
-            guard.push(File {
-                path: format!("{}{}", work_dir, "manifest/").to_string() + &file_name,
-            });
-            drop(guard);
-        }
+        manifest_map.insert(file_name, path_name);
     }
 
+    let jobs: Arc<Mutex<Vec<types::Entity>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let jobs = Arc::new(Mutex::new(
-        Vec::new()
-    ));
-    for i in 0..30 {
-        let mut guard = jobs.lock().unwrap();
-        guard.push(Job {
-            id: i,
+    for (key, value) in blob_map.iter() {
+        if manifest_map.contains_key(key) {
+            let mut guard = jobs.lock().unwrap();
+            guard.push(types::Entity {
+                manifest_path: manifest_map.get(key).unwrap().to_string(),
+                blob_path: value.to_string(),
+            });
+            drop(guard);
+            manifest_map.remove(key.clone().as_str());
+            continue;
+        }
+        let mut guard = file_deletion_queue.lock().unwrap();
+        guard.push(types::File {
+            path: value.to_string(),
         });
         drop(guard);
     }
-    let mut handles = vec![];
-    for i in 0..6 {
-        let counter = Arc::clone(&jobs);
-        handles.push(thread::spawn(move || {
-            transcoder::transcoder();
-            let mut count: i32 = 0;
-            loop {
-                let mut rng = rand::thread_rng();
-                let mut guard = counter.lock().unwrap();
-                if guard.len() == 0 {
-                    count+=1;
-                    println!("Thread {} says: No more jobs", i);
-                    drop(guard);
-                    thread::sleep(time::Duration::from_millis(8000));
-                    if count == 2 {
-                        println!("Thread {} says: I'm done", i);
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                count=0;
-                let job = guard.pop();
-                println!("Thread {} working on job {}", i, job.unwrap().id);
-                drop(guard);
-                thread::sleep(time::Duration::from_millis(rng.gen_range(1000..4000)));
-            }
+
+    for (key, value) in &manifest_map {
+        if blob_map.contains_key(key) {
+            let mut guard = jobs.lock().unwrap();
+            guard.push(types::Entity {
+                manifest_path: value.to_string(),
+                blob_path: blob_map.get(key).unwrap().to_string(),
+            });
+            drop(guard);
+            blob_map.remove(key.clone().as_str());
+            continue;
+        }
+        let mut guard = file_deletion_queue.lock().unwrap();
+        guard.push(types::File {
+            path: value.to_string(),
+        });
+        drop(guard);
+    }
+    drop(blob_map);
+    drop(manifest_map);
+
+    let fdq = Arc::clone(&file_deletion_queue);
+    let garbage_collector_thread = thread::spawn(move || {
+        garbage_collector::garbage_collector_routine(fdq);
+    });
+
+    println!("Transcoding threads starting...");
+
+    let mut transcoder_threads = Vec::new();
+
+    for i in 0..4 {
+        let fdq = Arc::clone(&file_deletion_queue);
+        let j = Arc::clone(&jobs);
+        transcoder_threads.push(thread::spawn(move || {
+            transcoder::transcoder_routine(i, j, fdq);
         }));
     }
 
-    for handle in handles {
-        handle.join().unwrap();
+    garbage_collector_thread.join().unwrap();
+    for thread in transcoder_threads {
+        thread.join().unwrap();
     }
+
     println!("Threads stopped");
     0;
 }
