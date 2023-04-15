@@ -5,6 +5,7 @@ pub struct File {
 pub struct Entity {
     pub blob_path: String,
     pub manifest_path: String,
+    pub state_path: String,
 }
 
 pub struct State {
