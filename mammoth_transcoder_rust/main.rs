@@ -1,24 +1,23 @@
+use crate::types::{Entity as EntityStruct, File as FileStruct};
+use dotenv;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::string::String;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, MutexGuard};
 use std::thread;
-use crate::types::{
-    File as FileStruct,
-    Entity as EntityStruct,
-};
-use dotenv;
+use parking_lot::{Mutex, Condvar, RwLock, FairMutex, FairMutexGuard};
 mod garbage_collector;
 mod transcoder;
 mod types;
 mod web_server;
+mod video_utility;
 
 fn create_directory(path: &str, error_message: &str) {
     if !Path::new(path).exists() {
         match fs::create_dir(path) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 println!("Error: {}", error_message);
                 std::process::exit(1);
@@ -43,19 +42,19 @@ fn main() {
     let state_dir = check_env_variable("TRANSCODER_STATE_DIR");
 
     create_directory(
-        blob_dir.clone().as_str(), 
-        "directory: blob directory creation failed"
+        blob_dir.clone().as_str(),
+        "directory: blob directory creation failed",
     );
     create_directory(
-        manifest_dir.clone().as_str(), 
-        "directory: manifest directory creation failed"
+        manifest_dir.clone().as_str(),
+        "directory: manifest directory creation failed",
     );
     create_directory(
-        state_dir.clone().as_str(), 
-        "directory: state directory creation failed"
+        state_dir.clone().as_str(),
+        "directory: state directory creation failed",
     );
 
-    let file_deletion_queue: Arc<Mutex<Vec<FileStruct>>> = Arc::new(Mutex::new(Vec::new()));
+    let file_deletion_queue = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
     let mut blob_map: HashMap<String, String> = HashMap::new();
     let mut manifest_map: HashMap<String, String> = HashMap::new();
 
@@ -78,22 +77,26 @@ fn main() {
         manifest_map.insert(file_name, path_name);
     }
 
-    let jobs: Arc<Mutex<Vec<types::Entity>>> = Arc::new(Mutex::new(Vec::new()));
-    let state: Arc<Mutex<HashMap<String, types::State>>> = Arc::new(Mutex::new(HashMap::new()));
+    let jobs = Arc::new((Mutex::new(Vec::<EntityStruct>::new()), Condvar::new()));
+
+    let state = Arc::new(FairMutex::new(HashMap::<String, String>::new()));
 
     for (key, value) in blob_map.iter() {
         if manifest_map.contains_key(key) {
-            let mut guard: MutexGuard<Vec<EntityStruct>> = jobs.lock().unwrap();
+            let &(ref lock, ref cvar) = &*jobs;
+            let mut guard = lock.lock();
             guard.push(types::Entity {
                 manifest_path: manifest_map.get(key).unwrap().to_string(),
                 blob_path: value.to_string(),
-                state_path: format!("{}{}", state_dir.clone(), key.clone().to_string())
+                state_path: format!("{}{}", state_dir.clone(), key.clone().to_string()),
+                name: key.clone().to_string(),
             });
             drop(guard);
             manifest_map.remove(key.clone().as_str());
             continue;
         }
-        let mut guard: MutexGuard<Vec<FileStruct>> = file_deletion_queue.lock().unwrap();
+        let &(ref lock, ref cvar) = &*file_deletion_queue;
+        let mut guard = lock.lock();
         guard.push(types::File {
             path: value.to_string(),
         });
@@ -102,17 +105,20 @@ fn main() {
 
     for (key, value) in manifest_map.iter() {
         if blob_map.contains_key(key) {
-            let mut guard: MutexGuard<Vec<EntityStruct>> = jobs.lock().unwrap();
+            let &(ref lock, ref cvar) = &*jobs;
+            let mut guard = lock.lock();
             guard.push(types::Entity {
                 manifest_path: value.to_string(),
                 blob_path: blob_map.get(key).unwrap().to_string(),
-                state_path: format!("{}{}", state_dir.clone(), key.clone().to_string())
+                state_path: format!("{}{}", state_dir.clone(), key.clone().to_string()),
+                name: key.clone().to_string(),
             });
             drop(guard);
             blob_map.remove(key.clone().as_str());
             continue;
         }
-        let mut guard: MutexGuard<Vec<types::File>> = file_deletion_queue.lock().unwrap();
+        let &(ref lock, ref cvar) = &*file_deletion_queue;
+        let mut guard = lock.lock();
         guard.push(types::File {
             path: value.to_string(),
         });
@@ -121,7 +127,7 @@ fn main() {
     drop(blob_map);
     drop(manifest_map);
 
-    let fdq: Arc<Mutex<Vec<types::File>>> = Arc::clone(&file_deletion_queue);
+    let fdq = Arc::clone(&file_deletion_queue);
     let garbage_collector_thread = thread::spawn(move || {
         garbage_collector::garbage_collector_routine(fdq);
     });
@@ -131,11 +137,11 @@ fn main() {
     let mut transcoder_threads = Vec::new();
 
     for i in 0..4 {
-        let fdq: Arc<Mutex<Vec<FileStruct>>> = Arc::clone(&file_deletion_queue);
-        let j: Arc<Mutex<Vec<EntityStruct>>> = Arc::clone(&jobs);
-        let s: Arc<Mutex<HashMap<String, types::State>>> = Arc::clone(&state);
+        let fdq = Arc::clone(&file_deletion_queue);
+        let j = Arc::clone(&jobs);
+        let s = Arc::clone(&state);
         transcoder_threads.push(thread::spawn(move || {
-             crate::transcoder::transcoder::routine(i, j, s, fdq);
+            crate::transcoder::transcoder::routine(i, j, s, fdq);
         }));
     }
 
