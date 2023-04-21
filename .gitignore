@@ -13,3 +13,8 @@ streaming/*
 */manifest/
 .env
 .next/
+*/streaming/**/*.jpg
+target/
+main
+state/
+output/
