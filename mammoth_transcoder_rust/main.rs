@@ -1,13 +1,15 @@
-use crate::types::{Entity as EntityStruct, File as FileStruct};
+use crate::types::StateEntity as StateStruct;
+use crate::types::{Entity as EntityStruct};
 use dotenv;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::string::String;
-use std::sync::{Arc, MutexGuard};
+use std::sync::{Arc};
 use std::thread;
-use parking_lot::{Mutex, Condvar, RwLock, FairMutex, FairMutexGuard};
+use parking_lot::{Mutex, Condvar, FairMutex};
 mod garbage_collector;
 mod transcoder;
 mod types;
@@ -40,6 +42,7 @@ fn main() {
     let manifest_dir = check_env_variable("TRANSCODER_MANIFEST_DIR");
     let blob_dir = check_env_variable("TRANSCODER_BLOB_DIR");
     let state_dir = check_env_variable("TRANSCODER_STATE_DIR");
+    let output_dir = check_env_variable("TRANSCODER_OUTPUT_DIR");
 
     create_directory(
         blob_dir.clone().as_str(),
@@ -52,6 +55,10 @@ fn main() {
     create_directory(
         state_dir.clone().as_str(),
         "directory: state directory creation failed",
+    );
+    create_directory(
+        output_dir.clone().as_str(),
+        "directory: output directory creation failed",
     );
 
     let file_deletion_queue = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
@@ -77,15 +84,15 @@ fn main() {
         manifest_map.insert(file_name, path_name);
     }
 
-    let jobs = Arc::new((Mutex::new(Vec::<EntityStruct>::new()), Condvar::new()));
+    let jobs = Arc::new((Mutex::new(VecDeque::<EntityStruct>::new()), Condvar::new()));
 
-    let state = Arc::new(FairMutex::new(HashMap::<String, String>::new()));
+    let state = Arc::new(FairMutex::new(HashMap::<String, StateStruct>::new()));
 
     for (key, value) in blob_map.iter() {
         if manifest_map.contains_key(key) {
             let &(ref lock, ref cvar) = &*jobs;
             let mut guard = lock.lock();
-            guard.push(types::Entity {
+            guard.push_front(types::Entity {
                 manifest_path: manifest_map.get(key).unwrap().to_string(),
                 blob_path: value.to_string(),
                 state_path: format!("{}{}", state_dir.clone(), key.clone().to_string()),
@@ -107,7 +114,7 @@ fn main() {
         if blob_map.contains_key(key) {
             let &(ref lock, ref cvar) = &*jobs;
             let mut guard = lock.lock();
-            guard.push(types::Entity {
+            guard.push_front(types::Entity {
                 manifest_path: value.to_string(),
                 blob_path: blob_map.get(key).unwrap().to_string(),
                 state_path: format!("{}{}", state_dir.clone(), key.clone().to_string()),

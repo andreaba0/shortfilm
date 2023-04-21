@@ -1,6 +1,7 @@
-use parking_lot::{Mutex, RawMutex, Condvar, RwLock};
+use parking_lot::{Mutex, Condvar};
 use std::sync::Arc;
 use crate::types::File;
+use std::fs;
 
 pub fn garbage_collector_routine(queue: Arc<(Mutex<Vec<File>>, Condvar)>) {
     loop {
@@ -14,6 +15,9 @@ pub fn garbage_collector_routine(queue: Arc<(Mutex<Vec<File>>, Condvar)>) {
         let file = guard.pop().unwrap();
         println!("Deleting file: {}", file.path);
         drop(guard);
-        //fs::remove_file(file.path).unwrap();
+        match fs::remove_file(file.path.clone()) {
+            Ok(_) => println!("Deleted file: {}", file.path),
+            Err(e) => println!("Failed to delete file: {}, error: {}", file.path, e),
+        }
     }
 }

@@ -9,15 +9,19 @@ pub struct Entity {
     pub name: String,
 }
 
-pub struct State {
+#[derive(Clone, Debug)]
+pub struct StateEntity {
     pub valid: bool,
     pub dash_resolutions: (i8, Vec<(Resolution, bool)>),
+    pub dash_languages: Vec<(i8, String, bool)>,
     pub hls_resolutions: (i8, Vec<(Resolution, bool)>),
-    pub languages: Vec<(i8, String, bool)>,
+    pub hls_languages: Vec<(i8, String, bool)>,
+    pub subtitles: Vec<(i8, String, bool)>,
     pub merged_dash: bool,
     pub merged_hls: bool,
-    pub uploaded_dash: Vec<Resolution>,
-    pub uploaded_hls: Vec<Resolution>,
+    pub uploaded_dash: Vec<(Resolution, bool)>,
+    pub uploaded_hls: Vec<(Resolution, bool)>,
+    pub duration: f64,
 }
 
 #[derive(Clone, Debug)]
